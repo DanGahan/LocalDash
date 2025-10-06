@@ -4,6 +4,12 @@ A macOS menu bar application that displays local information at a glance in a cl
 
 ![LocalDash Screenshot](Screenshot.png)
 
+### Settings
+
+Right-click the menu bar icon to access settings where you can configure your location and train station.
+
+![Settings Screenshot](SettingsScreenshot.png)
+
 ## Features
 
 ### 🌤️ Weather
@@ -20,11 +26,11 @@ A macOS menu bar application that displays local information at a glance in a cl
 - Scraped from [TideTimes.org.uk](https://www.tidetimes.org.uk/barry-tide-times)
 
 ### 🚆 Train Departures
-- Live departure times from Rhoose Cardiff Airport station
+- Live departure times from your configured station (default: Rhoose Cardiff Airport)
 - Displays next trains in both directions:
   - Eastbound: Cardiff, Caerphilly, Pontypridd, Treherbert
   - Westbound: Bridgend, Swansea
-- Shows scheduled time and real-time status
+- Shows scheduled time and real-time status (including delay times)
 - Powered by [Huxley 2 API](https://huxley2.azurewebsites.net) (National Rail proxy)
 
 ### 🌅 Sunrise & Sunset
@@ -34,7 +40,7 @@ A macOS menu bar application that displays local information at a glance in a cl
 
 ## Requirements
 
-- macOS 13.0 or later
+- macOS 14.0 or later
 - Swift 6.2 or later
 
 ## Installation
@@ -61,7 +67,11 @@ Simply click the menu bar icon to open the dashboard popup. The information refr
 
 ## Configuration
 
-Currently, the location is hardcoded to Barry, Wales (coordinates: 51.38636, -3.33831). Future versions will support user-configurable locations stored in a plist file.
+Right-click the menu bar icon and select "Settings" to configure:
+- **Location**: Set your latitude and longitude with a live map preview
+- **Train Station**: Enter your local train station's 3-letter CRS code
+
+Settings are automatically saved using UserDefaults and persist between app launches.
 
 ## Project Structure
 
@@ -101,8 +111,8 @@ The app is built using:
 
 ## Future Enhancements
 
-- [ ] User-configurable location via preferences
-- [ ] Support for multiple train stations
+- [x] User-configurable location via preferences
+- [x] Support for multiple train stations
 - [ ] Auto-refresh at configurable intervals
 - [ ] Dark mode support
 - [ ] Custom icon designs

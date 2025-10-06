@@ -1,5 +1,6 @@
 import Cocoa
 import SwiftUI
+import MapKit
 
 @main
 struct MenuBarInfo {
@@ -14,6 +15,7 @@ struct MenuBarInfo {
 class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem?
     var popover: NSPopover?
+    var settingsWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Create menu bar item
@@ -21,7 +23,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         if let button = statusItem?.button {
             button.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: "Info")
-            button.action = #selector(togglePopover)
+            button.action = #selector(handleClick(_:))
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
             button.target = self
         }
 
@@ -32,7 +35,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         popover?.contentViewController = NSHostingController(rootView: ContentView())
     }
 
-    @MainActor @objc func togglePopover() {
+    @MainActor @objc func handleClick(_ sender: NSStatusBarButton) {
+        let event = NSApp.currentEvent!
+
+        if event.type == .rightMouseUp {
+            showMenu()
+        } else {
+            togglePopover()
+        }
+    }
+
+    @MainActor func togglePopover() {
         if let button = statusItem?.button {
             if let popover = popover {
                 if popover.isShown {
@@ -42,6 +55,47 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
+    }
+
+    @MainActor func showMenu() {
+        let menu = NSMenu()
+
+        let settingsItem = NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
+        settingsItem.target = self
+        menu.addItem(settingsItem)
+
+        menu.addItem(NSMenuItem.separator())
+
+        let quitItem = NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q")
+        quitItem.target = self
+        menu.addItem(quitItem)
+
+        statusItem?.menu = menu
+        statusItem?.button?.performClick(nil)
+        statusItem?.menu = nil
+    }
+
+    @MainActor @objc func openSettings() {
+        print("openSettings called")
+        if settingsWindow == nil {
+            settingsWindow = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 400, height: 500),
+                styleMask: [.titled, .closable],
+                backing: .buffered,
+                defer: false
+            )
+            settingsWindow?.title = "LocalDash Settings"
+            settingsWindow?.contentViewController = NSHostingController(rootView: SettingsView())
+            settingsWindow?.level = .floating
+            settingsWindow?.center()
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        settingsWindow?.makeKeyAndOrderFront(nil)
+        settingsWindow?.orderFrontRegardless()
+    }
+
+    @MainActor @objc func quit() {
+        NSApplication.shared.terminate(nil)
     }
 }
 
@@ -189,15 +243,12 @@ class WeatherViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var error: String?
 
-    // TODO: Move to user-configurable plist
-    private let latitude = 51.38635735792241
-    private let longitude = -3.3383067307875467
-
     func fetchWeather() {
         isLoading = true
         error = nil
 
-        let urlString = "https://api.open-meteo.com/v1/forecast?latitude=\(latitude)&longitude=\(longitude)&current=temperature_2m,weather_code&hourly=precipitation_probability,precipitation&timezone=auto&forecast_days=1"
+        let settings = Settings.shared
+        let urlString = "https://api.open-meteo.com/v1/forecast?latitude=\(settings.latitude)&longitude=\(settings.longitude)&current=temperature_2m,weather_code&hourly=precipitation_probability,precipitation&timezone=auto&forecast_days=1"
 
         guard let url = URL(string: urlString) else {
             error = "Invalid URL"
@@ -551,7 +602,8 @@ class TrainViewModel: ObservableObject {
     }
 
     private func fetchRhooseTrains() async throws -> [Departure] {
-        let urlString = "https://huxley2.azurewebsites.net/departures/RIA/10"
+        let station = Settings.shared.trainStation
+        let urlString = "https://huxley2.azurewebsites.net/departures/\(station)/10"
 
         guard let url = URL(string: urlString) else {
             throw NSError(domain: "TrainAPI", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])
@@ -579,7 +631,8 @@ class TrainViewModel: ObservableObject {
             } else if etd == "Delayed" {
                 status = "Delayed"
             } else if etd != std {
-                status = "Delayed"
+                // etd contains the expected time
+                status = "Delayed (\(etd))"
             } else {
                 status = "On time"
             }
@@ -773,5 +826,136 @@ class SunViewModel: ObservableObject {
         }
 
         return (sunriseTime, sunsetTime)
+    }
+}
+
+// MARK: - Settings
+@MainActor
+class Settings: ObservableObject {
+    static let shared = Settings()
+    
+    @Published var latitude: Double {
+        didSet { UserDefaults.standard.set(latitude, forKey: "latitude") }
+    }
+    
+    @Published var longitude: Double {
+        didSet { UserDefaults.standard.set(longitude, forKey: "longitude") }
+    }
+    
+    @Published var trainStation: String {
+        didSet { UserDefaults.standard.set(trainStation, forKey: "trainStation") }
+    }
+    
+    private init() {
+        self.latitude = UserDefaults.standard.double(forKey: "latitude")
+        self.longitude = UserDefaults.standard.double(forKey: "longitude")
+        self.trainStation = UserDefaults.standard.string(forKey: "trainStation") ?? "RIA"
+        
+        // Set defaults if not configured
+        if latitude == 0 && longitude == 0 {
+            latitude = 51.38635735792241
+            longitude = -3.3383067307875467
+        }
+    }
+}
+
+struct SettingsView: View {
+    @StateObject private var settings = Settings.shared
+    @State private var latitudeText: String = ""
+    @State private var longitudeText: String = ""
+    @State private var trainStationText: String = ""
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Text("LocalDash Settings")
+                .font(.title2)
+
+            Text("Changes are saved automatically when you close this window")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .padding(.bottom, 10)
+
+            Group {
+                Text("Location")
+                    .font(.headline)
+                
+                HStack {
+                    Text("Latitude:")
+                        .frame(width: 80, alignment: .leading)
+                    TextField("51.38636", text: $latitudeText)
+                        .textFieldStyle(.roundedBorder)
+                }
+                
+                HStack {
+                    Text("Longitude:")
+                        .frame(width: 80, alignment: .leading)
+                    TextField("-3.33831", text: $longitudeText)
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                // Map preview
+                if let lat = Double(latitudeText), let lon = Double(longitudeText) {
+                    Map(position: .constant(.region(MKCoordinateRegion(
+                        center: CLLocationCoordinate2D(latitude: lat, longitude: lon),
+                        span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
+                    )))) {
+                        Marker("", coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon))
+                    }
+                    .frame(height: 120)
+                    .cornerRadius(8)
+                }
+            }
+
+            Divider()
+            
+            Group {
+                Text("Train Station")
+                    .font(.headline)
+                
+                HStack {
+                    Text("CRS Code:")
+                        .frame(width: 80, alignment: .leading)
+                    TextField("RIA", text: $trainStationText)
+                        .textFieldStyle(.roundedBorder)
+                }
+                
+                Text("Enter the 3-letter station code (e.g., RIA for Rhoose)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            Spacer()
+            
+            HStack {
+                Spacer()
+                Button("Close") {
+                    saveSettings()
+                    closeWindow()
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding()
+        .frame(width: 400)
+        .onAppear {
+            latitudeText = String(settings.latitude)
+            longitudeText = String(settings.longitude)
+            trainStationText = settings.trainStation
+        }
+    }
+    
+    private func saveSettings() {
+        if let lat = Double(latitudeText), let lon = Double(longitudeText) {
+            settings.latitude = lat
+            settings.longitude = lon
+        }
+
+        if !trainStationText.isEmpty {
+            settings.trainStation = trainStationText.uppercased()
+        }
+    }
+
+    private func closeWindow() {
+        NSApplication.shared.keyWindow?.close()
     }
 }
