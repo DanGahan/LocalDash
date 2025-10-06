@@ -45,18 +45,31 @@ Right-click the menu bar icon to access settings where you can configure your lo
 
 ## Installation
 
+### Download Pre-built App
+
+Download the latest release from the [Releases page](https://github.com/DanGahan/LocalDash/releases):
+1. Download `LocalDash.zip`
+2. Extract and move `LocalDash.app` to `/Applications`
+3. Launch LocalDash from Applications or Spotlight
+
 ### Building from Source
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/LocalDash.git
+git clone https://github.com/DanGahan/LocalDash.git
 cd LocalDash
 ```
 
-2. Build and run:
+2. Option A - Build and run directly:
 ```bash
 swift build
 swift run
+```
+
+3. Option B - Build standalone .app:
+```bash
+./build.sh
+open LocalDash.app
 ```
 
 The app will appear in your menu bar with an info icon (ⓘ). Click it to view the dashboard.
@@ -109,14 +122,23 @@ The app is built using:
 | Trains | Huxley 2 | REST API (free National Rail proxy) |
 | Sun Times | TideTimes.org.uk | Web scraping |
 
+## Building & Distribution
+
+The project includes automated build tools:
+
+- **Build Script**: `./build.sh` creates a standalone .app bundle locally
+- **GitHub Actions**: Automatically builds and attaches .app to releases when you tag a commit
+- **Release Process**: Create a new release tag to trigger automatic build and distribution
+
 ## Future Enhancements
 
 - [x] User-configurable location via preferences
 - [x] Support for multiple train stations
+- [x] Export as standalone .app bundle
+- [x] GitHub Actions CI/CD for releases
 - [ ] Auto-refresh at configurable intervals
 - [ ] Dark mode support
 - [ ] Custom icon designs
-- [ ] Export as standalone .app bundle
 
 ## License
 

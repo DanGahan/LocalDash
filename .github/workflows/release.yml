@@ -1,0 +1,41 @@
+name: Build Release
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Swift
+      uses: swift-actions/setup-swift@v2
+      with:
+        swift-version: "6.2"
+
+    - name: Build release binary
+      run: swift build -c release
+
+    - name: Make build script executable
+      run: chmod +x build.sh
+
+    - name: Create .app bundle
+      run: ./build.sh
+
+    - name: Create zip archive
+      run: |
+        zip -r LocalDash.zip LocalDash.app
+
+    - name: Upload Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ github.event.release.upload_url }}
+        asset_path: ./LocalDash.zip
+        asset_name: LocalDash.zip
+        asset_content_type: application/zip
