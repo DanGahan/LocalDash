@@ -2,7 +2,7 @@
 
 A macOS menu bar application that displays local information at a glance in a clean, 4-quadrant layout.
 
-![LocalDash Screenshot](screenshot.png)
+![LocalDash Screenshot](Screenshot.png)
 
 ## Features
 
