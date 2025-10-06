@@ -50,7 +50,13 @@ Right-click the menu bar icon to access settings where you can configure your lo
 Download the latest release from the [Releases page](https://github.com/DanGahan/LocalDash/releases):
 1. Download `LocalDash.zip`
 2. Extract and move `LocalDash.app` to `/Applications`
-3. Launch LocalDash from Applications or Spotlight
+3. **Remove quarantine flag** (required for unsigned apps):
+   ```bash
+   xattr -cr /Applications/LocalDash.app
+   ```
+4. Launch LocalDash from Applications or Spotlight
+
+**Note:** The app is not code-signed, so macOS Gatekeeper will block it without removing the quarantine attribute.
 
 ### Building from Source
 
