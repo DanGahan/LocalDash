@@ -1,6 +1,6 @@
 # LocalDash
 
-A macOS menu bar application that displays local information at a glance in a clean, 4-quadrant layout.
+A macOS menu bar application that displays local information at a glance in a clean, 6-quadrant layout.
 
 ![LocalDash Screenshot](Screenshot.png)
 
@@ -37,6 +37,19 @@ Right-click the menu bar icon to access settings where you can configure your lo
 - Daily sunrise time
 - Daily sunset time
 - Data scraped from TideTimes.org.uk
+
+### 🏫 School Run Timer
+- Live countdown to school drop-off time (08:45)
+- Visual progress bar
+- Shows hours and minutes remaining
+
+### ⚽ Cardiff City FC
+- Current league position (3rd in League 1)
+- Previous fixture result with date
+- Next fixture date and opponent
+- Filters out postponed matches and cup games
+- Official bluebird logo
+- Powered by [TheSportsDB API](https://www.thesportsdb.com)
 
 ## Requirements
 
@@ -113,11 +126,13 @@ The app is built using:
 ### Key Components
 
 - **AppDelegate**: Manages the menu bar item and popover
-- **ContentView**: 4-quadrant grid layout
+- **ContentView**: 3x2 grid layout (6 quadrants)
 - **WeatherQuadrant & WeatherViewModel**: Weather data fetching and display
 - **TideQuadrant & TideViewModel**: Tide information scraping and display
 - **TrainQuadrant & TrainViewModel**: Train departure data and display
 - **SunQuadrant & SunViewModel**: Sunrise/sunset information
+- **SchoolRunQuadrant & SchoolRunViewModel**: School drop-off countdown timer
+- **CardiffCityQuadrant & CardiffCityViewModel**: Cardiff City FC match and league data
 
 ## APIs & Data Sources
 
@@ -127,6 +142,8 @@ The app is built using:
 | Tides | TideTimes.org.uk | Web scraping |
 | Trains | Huxley 2 | REST API (free National Rail proxy) |
 | Sun Times | TideTimes.org.uk | Web scraping |
+| School Run | Local calculation | Timer based on current time |
+| Cardiff City | TheSportsDB | REST API (free, no key required) |
 
 ## Building & Distribution
 
@@ -159,3 +176,4 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 - Weather data from [Open-Meteo](https://open-meteo.com)
 - Train data from [Huxley 2](https://huxley2.azurewebsites.net)
 - Tide and sun data from [TideTimes.org.uk](https://www.tidetimes.org.uk)
+- Cardiff City FC data from [TheSportsDB](https://www.thesportsdb.com)

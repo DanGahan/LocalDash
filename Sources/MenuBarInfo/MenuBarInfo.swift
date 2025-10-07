@@ -30,9 +30,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Create popover
         popover = NSPopover()
-        popover?.contentSize = NSSize(width: 450, height: 300)
+        popover?.contentSize = NSSize(width: 675, height: 400)
         popover?.behavior = .transient
         popover?.contentViewController = NSHostingController(rootView: ContentView())
+
+        // Close popover when clicking outside
+        NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            if let popover = self?.popover, popover.isShown {
+                popover.performClose(nil)
+            }
+        }
     }
 
     @MainActor @objc func handleClick(_ sender: NSStatusBarButton) {
@@ -110,6 +117,10 @@ struct ContentView: View {
                 TideQuadrant()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .border(Color.gray.opacity(0.3), width: 0.5)
+
+                SunQuadrant()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .border(Color.gray.opacity(0.3), width: 0.5)
             }
             .frame(maxHeight: .infinity)
 
@@ -118,7 +129,11 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .border(Color.gray.opacity(0.3), width: 0.5)
 
-                SunQuadrant()
+                SchoolRunQuadrant()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .border(Color.gray.opacity(0.3), width: 0.5)
+
+                CardiffCityQuadrant()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .border(Color.gray.opacity(0.3), width: 0.5)
             }
@@ -826,6 +841,354 @@ class SunViewModel: ObservableObject {
         }
 
         return (sunriseTime, sunsetTime)
+    }
+}
+
+// MARK: - School Run Quadrant
+struct SchoolRunQuadrant: View {
+    @StateObject private var viewModel = SchoolRunViewModel()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "building.2.fill")
+                    .font(.system(size: 20))
+                    .foregroundColor(.black)
+                Text("School Run")
+                    .font(.headline)
+            }
+
+            if viewModel.isLoading {
+                ProgressView()
+            } else if let error = viewModel.error {
+                Text("Error: \(error)")
+                    .font(.caption)
+                    .foregroundColor(.red)
+            } else {
+                VStack(alignment: .leading, spacing: 4) {
+                    if let travelTime = viewModel.travelTime {
+                        Text(travelTime)
+                            .font(.title)
+                    }
+
+                    Text("Journey time to Gaer Primary")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .onAppear {
+            viewModel.fetchTravelTime()
+        }
+    }
+}
+
+@MainActor
+class SchoolRunViewModel: ObservableObject {
+    @Published var travelTime: String?
+    @Published var isLoading = false
+    @Published var error: String?
+
+    private var lastFetchTime: Date?
+    private let cacheInterval: TimeInterval = 300 // 5 minutes
+
+    func fetchTravelTime() {
+        // Check if we have cached data that's still fresh
+        if let lastFetch = lastFetchTime,
+           Date().timeIntervalSince(lastFetch) < cacheInterval,
+           travelTime != nil {
+            return
+        }
+
+        isLoading = true
+        error = nil
+
+        Task { @MainActor in
+            do {
+                let time = try await calculateDriveTime(from: "CF62 3ND", to: "Gaer Primary School")
+                self.travelTime = time
+                self.lastFetchTime = Date()
+                self.isLoading = false
+            } catch {
+                self.error = error.localizedDescription
+                self.isLoading = false
+            }
+        }
+    }
+
+    private func calculateDriveTime(from origin: String, to destination: String) async throws -> String {
+        // Geocode origin
+        let originCoordinate = try await geocode(address: origin)
+
+        // Geocode destination
+        let destinationCoordinate = try await geocode(address: destination)
+
+        // Create placemarks
+        let originPlacemark = MKPlacemark(coordinate: originCoordinate)
+        let destinationPlacemark = MKPlacemark(coordinate: destinationCoordinate)
+
+        // Create directions request
+        let request = MKDirections.Request()
+        request.source = MKMapItem(placemark: originPlacemark)
+        request.destination = MKMapItem(placemark: destinationPlacemark)
+        request.transportType = .automobile
+        request.requestsAlternateRoutes = false
+
+        // Get directions
+        let directions = MKDirections(request: request)
+        let response = try await directions.calculate()
+
+        guard let route = response.routes.first else {
+            throw NSError(domain: "SchoolRunAPI", code: 1, userInfo: [NSLocalizedDescriptionKey: "No route found"])
+        }
+
+        // Format travel time
+        let travelTimeSeconds = route.expectedTravelTime
+        return formatTravelTime(seconds: travelTimeSeconds)
+    }
+
+    private func geocode(address: String) async throws -> CLLocationCoordinate2D {
+        let geocoder = CLGeocoder()
+        let placemarks = try await geocoder.geocodeAddressString(address)
+
+        guard let location = placemarks.first?.location else {
+            throw NSError(domain: "SchoolRunAPI", code: 2, userInfo: [NSLocalizedDescriptionKey: "Could not geocode address: \(address)"])
+        }
+
+        return location.coordinate
+    }
+
+    private func formatTravelTime(seconds: TimeInterval) -> String {
+        let minutes = Int(seconds / 60)
+        let hours = minutes / 60
+        let remainingMinutes = minutes % 60
+
+        if hours > 0 {
+            return "\(hours) hr \(remainingMinutes) min"
+        } else {
+            return "\(minutes) min"
+        }
+    }
+}
+
+// MARK: - Cardiff City Quadrant
+struct CardiffCityQuadrant: View {
+    @StateObject private var viewModel = CardiffCityViewModel()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                if let bluebirdImage = loadBlackBluebirdImage() {
+                    Image(nsImage: bluebirdImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 36, height: 36)
+                } else {
+                    Image(systemName: "bird.fill")
+                        .font(.system(size: 20))
+                        .foregroundColor(.black)
+                }
+                Text("Cardiff City")
+                    .font(.headline)
+            }
+
+            if viewModel.isLoading {
+                ProgressView()
+            } else if let error = viewModel.error {
+                Text("Error: \(error)")
+                    .font(.caption)
+                    .foregroundColor(.red)
+            } else {
+                VStack(alignment: .leading, spacing: 4) {
+                    if let position = viewModel.leaguePosition {
+                        Text(position)
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                    }
+
+                    if let lastResult = viewModel.lastResult {
+                        Text(lastResult)
+                            .font(.caption)
+                    }
+
+                    if let nextFixture = viewModel.nextFixture {
+                        Text(nextFixture)
+                            .font(.caption)
+                    }
+                }
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .onAppear {
+            viewModel.fetchCardiffCityData()
+        }
+    }
+
+    private func loadBlackBluebirdImage() -> NSImage? {
+        // Try different resource loading methods
+        if let resourceURL = Bundle.module.url(forResource: "bluebird", withExtension: "png") {
+            return NSImage(contentsOf: resourceURL)
+        }
+
+        if let resourceURL = Bundle.module.url(forResource: "bluebird", withExtension: "png", subdirectory: "Resources") {
+            return NSImage(contentsOf: resourceURL)
+        }
+
+        // If bundle loading fails, try direct path as fallback
+        let directPath = "/Users/dan/Documents/Code/MenuBarInfo/Sources/MenuBarInfo/Resources/bluebird.png"
+        if FileManager.default.fileExists(atPath: directPath) {
+            return NSImage(contentsOfFile: directPath)
+        }
+
+        return nil
+    }
+}
+
+@MainActor
+class CardiffCityViewModel: ObservableObject {
+    @Published var leaguePosition: String?
+    @Published var lastResult: String?
+    @Published var nextFixture: String?
+    @Published var isLoading = false
+    @Published var error: String?
+
+    private var lastFetchTime: Date?
+    private let cacheInterval: TimeInterval = 3600 // 1 hour
+
+    func fetchCardiffCityData() {
+        // Check if we have cached data that's still fresh
+        if let lastFetch = lastFetchTime,
+           Date().timeIntervalSince(lastFetch) < cacheInterval,
+           leaguePosition != nil {
+            return
+        }
+
+        isLoading = true
+        error = nil
+
+        Task { @MainActor in
+            do {
+                // Fetch Cardiff City data from TheSportsDB API
+                async let lastEventTask = fetchLastEvent()
+                async let nextEventTask = fetchNextEvent()
+                async let tableTask = fetchLeagueTable()
+
+                let (lastEvent, nextEvent, table) = try await (lastEventTask, nextEventTask, tableTask)
+
+                self.lastResult = lastEvent
+                self.nextFixture = nextEvent
+                self.leaguePosition = table
+                self.lastFetchTime = Date()
+                self.isLoading = false
+            } catch {
+                self.error = error.localizedDescription
+                self.isLoading = false
+            }
+        }
+    }
+
+    private func fetchLastEvent() async throws -> String {
+        let url = URL(string: "https://www.thesportsdb.com/api/v1/json/3/eventslast.php?id=133637")!
+        let (data, _) = try await URLSession.shared.data(from: url)
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+
+        guard let results = json?["results"] as? [[String: Any]] else {
+            return "No recent result"
+        }
+
+        // Find most recent league match
+        guard let event = results.first(where: { event in
+            let league = event["strLeague"] as? String ?? ""
+            return league == "English League 1"
+        }) else {
+            return "No recent result"
+        }
+
+        let homeTeam = event["strHomeTeam"] as? String ?? ""
+        let awayTeam = event["strAwayTeam"] as? String ?? ""
+        let homeScore = event["intHomeScore"] as? String ?? "0"
+        let awayScore = event["intAwayScore"] as? String ?? "0"
+        let dateStr = event["dateEvent"] as? String ?? ""
+        let date = formatDate(dateStr)
+
+        let isHome = homeTeam.contains("Cardiff")
+        let opponent = isHome ? awayTeam : homeTeam
+        let result = isHome ? "\(homeScore)-\(awayScore)" : "\(awayScore)-\(homeScore)"
+
+        return "Previous Fixture (\(date)):\nCardiff City \(result) \(opponent)"
+    }
+
+    private func fetchNextEvent() async throws -> String {
+        // Search through multiple rounds to find next non-postponed Cardiff fixture
+        for round in 12...20 {
+            let url = URL(string: "https://www.thesportsdb.com/api/v1/json/3/eventsround.php?id=4396&r=\(round)&s=2025-2026")!
+            let (data, _) = try await URLSession.shared.data(from: url)
+            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+
+            guard let events = json?["events"] as? [[String: Any]] else {
+                continue
+            }
+
+            // Find Cardiff match that is not postponed
+            if let event = events.first(where: { event in
+                let homeTeam = event["strHomeTeam"] as? String ?? ""
+                let awayTeam = event["strAwayTeam"] as? String ?? ""
+                let postponed = event["strPostponed"] as? String ?? "no"
+                return (homeTeam.contains("Cardiff") || awayTeam.contains("Cardiff")) && postponed != "yes"
+            }) {
+                let homeTeam = event["strHomeTeam"] as? String ?? ""
+                let awayTeam = event["strAwayTeam"] as? String ?? ""
+                let dateStr = event["dateEvent"] as? String ?? ""
+                let date = formatDate(dateStr)
+
+                let isHome = homeTeam.contains("Cardiff")
+                let opponent = isHome ? awayTeam : homeTeam
+
+                return "Next Fixture (\(date)):\nCardiff City v \(opponent)"
+            }
+        }
+
+        return "No upcoming fixture"
+    }
+
+    private func fetchLeagueTable() async throws -> String {
+        let url = URL(string: "https://www.thesportsdb.com/api/v1/json/3/lookuptable.php?l=4396&s=2025-2026")!
+        let (data, _) = try await URLSession.shared.data(from: url)
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+
+        guard let table = json?["table"] as? [[String: Any]] else {
+            return "Position unknown"
+        }
+
+        // Find Cardiff City in the table
+        for entry in table {
+            if let teamName = entry["strTeam"] as? String,
+               teamName.contains("Cardiff"),
+               let rank = entry["intRank"] as? String {
+                let position = formatPosition(Int(rank) ?? 0)
+                return "\(position) in League 1"
+            }
+        }
+
+        return "Position unknown"
+    }
+
+    private func formatDate(_ dateStr: String) -> String {
+        let parts = dateStr.split(separator: "-")
+        guard parts.count == 3 else { return dateStr }
+        return "\(parts[2])/\(parts[1])/\(parts[0])"
+    }
+
+    private func formatPosition(_ position: Int) -> String {
+        switch position {
+        case 1: return "1st"
+        case 2: return "2nd"
+        case 3: return "3rd"
+        default: return "\(position)th"
+        }
     }
 }
 

@@ -8,7 +8,10 @@ let package = Package(
     ],
     targets: [
         .executableTarget(
-            name: "MenuBarInfo"
+            name: "MenuBarInfo",
+            resources: [
+                .process("Resources")
+            ]
         ),
     ]
 )
