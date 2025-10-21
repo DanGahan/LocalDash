@@ -43,7 +43,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @MainActor @objc func handleClick(_ sender: NSStatusBarButton) {
-        let event = NSApp.currentEvent!
+        guard let event = NSApp.currentEvent else {
+            // If we can't get the current event, default to toggling the popover
+            togglePopover()
+            return
+        }
 
         if event.type == .rightMouseUp {
             showMenu()
