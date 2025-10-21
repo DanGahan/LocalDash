@@ -29,6 +29,15 @@ cp "$BUILD_DIR/MenuBarInfo" "$APP_DIR/Contents/MacOS/$APP_NAME"
 # Copy Info.plist
 cp Info.plist "$APP_DIR/Contents/Info.plist"
 
+# Copy resources
+echo "📄 Copying resources..."
+if [ -f "Sources/MenuBarInfo/Resources/bluebird.png" ]; then
+    cp "Sources/MenuBarInfo/Resources/bluebird.png" "$APP_DIR/Contents/Resources/"
+    echo "  ✓ Copied bluebird.png"
+else
+    echo "  ⚠️  Warning: bluebird.png not found"
+fi
+
 # Make executable
 chmod +x "$APP_DIR/Contents/MacOS/$APP_NAME"
 

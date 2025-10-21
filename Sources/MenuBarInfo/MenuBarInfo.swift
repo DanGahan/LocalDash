@@ -1032,21 +1032,24 @@ struct CardiffCityQuadrant: View {
     }
 
     private func loadBlackBluebirdImage() -> NSImage? {
-        // Try different resource loading methods
-        if let resourceURL = Bundle.module.url(forResource: "bluebird", withExtension: "png") {
+        // Try to load from main bundle first (for release builds)
+        if let resourceURL = Bundle.main.url(forResource: "bluebird", withExtension: "png") {
             return NSImage(contentsOf: resourceURL)
         }
 
-        if let resourceURL = Bundle.module.url(forResource: "bluebird", withExtension: "png", subdirectory: "Resources") {
+        if let resourceURL = Bundle.main.url(forResource: "bluebird", withExtension: "png", subdirectory: "Resources") {
             return NSImage(contentsOf: resourceURL)
         }
 
-        // If bundle loading fails, try direct path as fallback
-        let directPath = "/Users/dan/Documents/Code/MenuBarInfo/Sources/MenuBarInfo/Resources/bluebird.png"
-        if FileManager.default.fileExists(atPath: directPath) {
-            return NSImage(contentsOfFile: directPath)
+        // Try to load from the app bundle's Resources directory
+        if let appPath = Bundle.main.bundlePath as NSString? {
+            let resourcePath = appPath.appendingPathComponent("Contents/Resources/bluebird.png")
+            if FileManager.default.fileExists(atPath: resourcePath) {
+                return NSImage(contentsOfFile: resourcePath)
+            }
         }
 
+        // Fallback: return nil and use the system icon instead
         return nil
     }
 }
