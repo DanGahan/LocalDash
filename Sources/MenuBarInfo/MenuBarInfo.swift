@@ -1,6 +1,6 @@
 import Cocoa
 import SwiftUI
-import MapKit
+@preconcurrency import MapKit
 
 @main
 struct MenuBarInfo {
