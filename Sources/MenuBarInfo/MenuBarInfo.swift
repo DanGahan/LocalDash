@@ -1123,6 +1123,11 @@ class CardiffCityViewModel: ObservableObject {
 
     private func fetchNextEvent() async throws -> String {
         // Search through multiple rounds to find next non-postponed Cardiff fixture
+        let now = Date()
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        dateFormatter.timeZone = TimeZone.current
+
         for round in 12...20 {
             let url = URL(string: "https://www.thesportsdb.com/api/v1/json/3/eventsround.php?id=4396&r=\(round)&s=2025-2026")!
             let (data, _) = try await URLSession.shared.data(from: url)
@@ -1132,12 +1137,27 @@ class CardiffCityViewModel: ObservableObject {
                 continue
             }
 
-            // Find Cardiff match that is not postponed
+            // Find Cardiff match that is not postponed and is in the future
             if let event = events.first(where: { event in
                 let homeTeam = event["strHomeTeam"] as? String ?? ""
                 let awayTeam = event["strAwayTeam"] as? String ?? ""
                 let postponed = event["strPostponed"] as? String ?? "no"
-                return (homeTeam.contains("Cardiff") || awayTeam.contains("Cardiff")) && postponed != "yes"
+                let dateStr = event["dateEvent"] as? String ?? ""
+
+                // Check if the match is Cardiff, not postponed, and in the future
+                let isCardiffMatch = homeTeam.contains("Cardiff") || awayTeam.contains("Cardiff")
+                let isNotPostponed = postponed != "yes"
+
+                // Parse date and check if it's in the future
+                let isFuture: Bool
+                if let matchDate = dateFormatter.date(from: dateStr) {
+                    // Add one day to account for matches that happen later on the same date
+                    isFuture = matchDate.addingTimeInterval(86400) > now
+                } else {
+                    isFuture = false
+                }
+
+                return isCardiffMatch && isNotPostponed && isFuture
             }) {
                 let homeTeam = event["strHomeTeam"] as? String ?? ""
                 let awayTeam = event["strAwayTeam"] as? String ?? ""
