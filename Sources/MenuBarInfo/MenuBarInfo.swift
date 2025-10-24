@@ -2,6 +2,10 @@ import Cocoa
 import SwiftUI
 @preconcurrency import MapKit
 
+extension Notification.Name {
+    static let refreshData = Notification.Name("refreshData")
+}
+
 @main
 struct MenuBarInfo {
     static func main() {
@@ -63,6 +67,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     popover.performClose(nil)
                 } else {
                     popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+                    // Trigger refresh when popover opens
+                    NotificationCenter.default.post(name: .refreshData, object: nil)
                 }
             }
         }
@@ -197,6 +203,9 @@ struct WeatherQuadrant: View {
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onAppear {
+            viewModel.fetchWeather()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .refreshData)) { _ in
             viewModel.fetchWeather()
         }
     }
@@ -400,6 +409,9 @@ struct TideQuadrant: View {
         .onAppear {
             viewModel.fetchTide()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .refreshData)) { _ in
+            viewModel.fetchTide()
+        }
     }
 }
 
@@ -589,6 +601,9 @@ struct TrainQuadrant: View {
         .onAppear {
             viewModel.fetchDepartures()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .refreshData)) { _ in
+            viewModel.fetchDepartures()
+        }
     }
 }
 
@@ -759,6 +774,9 @@ struct SunQuadrant: View {
         .onAppear {
             viewModel.fetchSunTimes()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .refreshData)) { _ in
+            viewModel.fetchSunTimesIfNeeded()
+        }
     }
 }
 
@@ -774,6 +792,18 @@ class SunViewModel: ObservableObject {
     @Published var nextEvent: SunEvent?
     @Published var isLoading = false
     @Published var error: String?
+    @Published var lastRefreshTime: Date?
+
+    func fetchSunTimesIfNeeded() {
+        // Only refresh if more than 4 hours have passed or never refreshed
+        if let lastRefresh = lastRefreshTime {
+            let fourHours: TimeInterval = 4 * 60 * 60
+            if Date().timeIntervalSince(lastRefresh) < fourHours {
+                return
+            }
+        }
+        fetchSunTimes()
+    }
 
     func fetchSunTimes() {
         isLoading = true
@@ -795,6 +825,7 @@ class SunViewModel: ObservableObject {
                     self.nextEvent = SunEvent(type: "Sunrise", time: times.sunrise)
                 }
 
+                self.lastRefreshTime = Date()
                 self.isLoading = false
             } catch {
                 self.error = error.localizedDescription
@@ -884,6 +915,9 @@ struct SchoolRunQuadrant: View {
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onAppear {
+            viewModel.fetchTravelTime()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .refreshData)) { _ in
             viewModel.fetchTravelTime()
         }
     }
@@ -1029,6 +1063,9 @@ struct CardiffCityQuadrant: View {
         .onAppear {
             viewModel.fetchCardiffCityData()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .refreshData)) { _ in
+            viewModel.fetchCardiffCityDataIfNeeded()
+        }
     }
 
     private func loadBlackBluebirdImage() -> NSImage? {
@@ -1061,9 +1098,21 @@ class CardiffCityViewModel: ObservableObject {
     @Published var nextFixture: String?
     @Published var isLoading = false
     @Published var error: String?
+    @Published var lastRefreshTime: Date?
 
     private var lastFetchTime: Date?
     private let cacheInterval: TimeInterval = 3600 // 1 hour
+
+    func fetchCardiffCityDataIfNeeded() {
+        // Only refresh if more than 4 hours have passed or never refreshed
+        if let lastRefresh = lastRefreshTime {
+            let fourHours: TimeInterval = 4 * 60 * 60
+            if Date().timeIntervalSince(lastRefresh) < fourHours {
+                return
+            }
+        }
+        fetchCardiffCityData()
+    }
 
     func fetchCardiffCityData() {
         // Check if we have cached data that's still fresh
@@ -1089,6 +1138,7 @@ class CardiffCityViewModel: ObservableObject {
                 self.nextFixture = nextEvent
                 self.leaguePosition = table
                 self.lastFetchTime = Date()
+                self.lastRefreshTime = Date()
                 self.isLoading = false
             } catch {
                 self.error = error.localizedDescription
