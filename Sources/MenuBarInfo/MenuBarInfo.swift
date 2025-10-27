@@ -6,6 +6,7 @@ extension Notification.Name {
     static let refreshData = Notification.Name("refreshData")
 }
 
+
 @main
 struct MenuBarInfo {
     static func main() {
@@ -16,12 +17,15 @@ struct MenuBarInfo {
     }
 }
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var statusItem: NSStatusItem?
     var popover: NSPopover?
     var settingsWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Set app to menu bar only (accessory) by default
+        NSApp.setActivationPolicy(.accessory)
+
         // Create menu bar item
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 
@@ -67,8 +71,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     popover.performClose(nil)
                 } else {
                     popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-                    // Trigger refresh when popover opens
-                    NotificationCenter.default.post(name: .refreshData, object: nil)
                 }
             }
         }
@@ -76,6 +78,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @MainActor func showMenu() {
         let menu = NSMenu()
+
+        let refreshItem = NSMenuItem(title: "Refresh Data", action: #selector(refreshData), keyEquivalent: "r")
+        refreshItem.target = self
+        menu.addItem(refreshItem)
+
+        menu.addItem(NSMenuItem.separator())
 
         let settingsItem = NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
@@ -87,32 +95,61 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         quitItem.target = self
         menu.addItem(quitItem)
 
-        statusItem?.menu = menu
-        statusItem?.button?.performClick(nil)
-        statusItem?.menu = nil
+        // Set menu and show it
+        if let button = statusItem?.button {
+            let frame = button.bounds
+            menu.popUp(positioning: nil, at: NSPoint(x: frame.midX, y: frame.minY - 5), in: button)
+        }
+    }
+
+    @MainActor @objc func refreshData() {
+        NotificationCenter.default.post(name: .refreshData, object: nil)
     }
 
     @MainActor @objc func openSettings() {
         print("openSettings called")
         if settingsWindow == nil {
+            let hostingController = NSHostingController(rootView: SettingsView())
             settingsWindow = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 400, height: 500),
+                contentRect: NSRect(x: 0, y: 0, width: 400, height: 550),
                 styleMask: [.titled, .closable],
                 backing: .buffered,
                 defer: false
             )
             settingsWindow?.title = "LocalDash Settings"
-            settingsWindow?.contentViewController = NSHostingController(rootView: SettingsView())
+            settingsWindow?.contentViewController = hostingController
+            settingsWindow?.isReleasedWhenClosed = false
             settingsWindow?.level = .floating
-            settingsWindow?.center()
+
+            // Add a delegate to handle window closing
+            if let window = settingsWindow {
+                window.delegate = self
+            }
         }
+
+        // Activate app as a regular application to enable keyboard focus
+        // This temporarily gives the app a dock icon, which allows proper keyboard routing
+        NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
-        settingsWindow?.makeKeyAndOrderFront(nil)
-        settingsWindow?.orderFrontRegardless()
+
+        if let window = settingsWindow {
+            window.center()
+            window.makeKeyAndOrderFront(nil)
+            window.makeMain()
+        }
     }
 
     @MainActor @objc func quit() {
         NSApplication.shared.terminate(nil)
+    }
+
+    // MARK: - NSWindowDelegate
+    @MainActor func windowWillClose(_ notification: Notification) {
+        if notification.object as? NSWindow === settingsWindow {
+            settingsWindow = nil
+            // Restore menu bar-only activation policy
+            NSApp.setActivationPolicy(.accessory)
+        }
     }
 }
 
@@ -203,9 +240,6 @@ struct WeatherQuadrant: View {
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onAppear {
-            viewModel.fetchWeather()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .refreshData)) { _ in
             viewModel.fetchWeather()
         }
     }
@@ -409,9 +443,6 @@ struct TideQuadrant: View {
         .onAppear {
             viewModel.fetchTide()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .refreshData)) { _ in
-            viewModel.fetchTide()
-        }
     }
 }
 
@@ -601,9 +632,6 @@ struct TrainQuadrant: View {
         .onAppear {
             viewModel.fetchDepartures()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .refreshData)) { _ in
-            viewModel.fetchDepartures()
-        }
     }
 }
 
@@ -672,10 +700,11 @@ class TrainViewModel: ObservableObject {
             }
 
             // Determine direction based on destination
-            // Eastbound: Cardiff, Caerphilly, Pontypridd, Treherbert, etc.
+            // Eastbound: Cardiff, Caerphilly, Pontypridd, Treherbert, Rhymney, etc.
             // Westbound: Bridgend, Swansea
             if (destination.contains("Cardiff") || destination.contains("Caerphilly") ||
-                destination.contains("Pontypridd") || destination.contains("Treherbert")) && cardiffTrain == nil {
+                destination.contains("Pontypridd") || destination.contains("Treherbert") ||
+                destination.contains("Rhymney")) && cardiffTrain == nil {
                 cardiffTrain = Departure(
                     destination: "Cardiff",
                     scheduledTime: std,
@@ -774,9 +803,6 @@ struct SunQuadrant: View {
         .onAppear {
             viewModel.fetchSunTimes()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .refreshData)) { _ in
-            viewModel.fetchSunTimesIfNeeded()
-        }
     }
 }
 
@@ -792,18 +818,6 @@ class SunViewModel: ObservableObject {
     @Published var nextEvent: SunEvent?
     @Published var isLoading = false
     @Published var error: String?
-    @Published var lastRefreshTime: Date?
-
-    func fetchSunTimesIfNeeded() {
-        // Only refresh if more than 4 hours have passed or never refreshed
-        if let lastRefresh = lastRefreshTime {
-            let fourHours: TimeInterval = 4 * 60 * 60
-            if Date().timeIntervalSince(lastRefresh) < fourHours {
-                return
-            }
-        }
-        fetchSunTimes()
-    }
 
     func fetchSunTimes() {
         isLoading = true
@@ -825,7 +839,6 @@ class SunViewModel: ObservableObject {
                     self.nextEvent = SunEvent(type: "Sunrise", time: times.sunrise)
                 }
 
-                self.lastRefreshTime = Date()
                 self.isLoading = false
             } catch {
                 self.error = error.localizedDescription
@@ -915,9 +928,6 @@ struct SchoolRunQuadrant: View {
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onAppear {
-            viewModel.fetchTravelTime()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .refreshData)) { _ in
             viewModel.fetchTravelTime()
         }
     }
@@ -1063,27 +1073,15 @@ struct CardiffCityQuadrant: View {
         .onAppear {
             viewModel.fetchCardiffCityData()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .refreshData)) { _ in
-            viewModel.fetchCardiffCityDataIfNeeded()
-        }
     }
 
     private func loadBlackBluebirdImage() -> NSImage? {
-        // Try to load from main bundle first (for release builds)
-        if let resourceURL = Bundle.main.url(forResource: "bluebird", withExtension: "png") {
-            return NSImage(contentsOf: resourceURL)
-        }
+        // For Swift Package resources, use the module bundle
+        let bundle = Bundle.module
 
-        if let resourceURL = Bundle.main.url(forResource: "bluebird", withExtension: "png", subdirectory: "Resources") {
+        // Try to load from module bundle
+        if let resourceURL = bundle.url(forResource: "bluebird", withExtension: "png") {
             return NSImage(contentsOf: resourceURL)
-        }
-
-        // Try to load from the app bundle's Resources directory
-        if let appPath = Bundle.main.bundlePath as NSString? {
-            let resourcePath = appPath.appendingPathComponent("Contents/Resources/bluebird.png")
-            if FileManager.default.fileExists(atPath: resourcePath) {
-                return NSImage(contentsOfFile: resourcePath)
-            }
         }
 
         // Fallback: return nil and use the system icon instead
@@ -1098,21 +1096,9 @@ class CardiffCityViewModel: ObservableObject {
     @Published var nextFixture: String?
     @Published var isLoading = false
     @Published var error: String?
-    @Published var lastRefreshTime: Date?
 
     private var lastFetchTime: Date?
     private let cacheInterval: TimeInterval = 3600 // 1 hour
-
-    func fetchCardiffCityDataIfNeeded() {
-        // Only refresh if more than 4 hours have passed or never refreshed
-        if let lastRefresh = lastRefreshTime {
-            let fourHours: TimeInterval = 4 * 60 * 60
-            if Date().timeIntervalSince(lastRefresh) < fourHours {
-                return
-            }
-        }
-        fetchCardiffCityData()
-    }
 
     func fetchCardiffCityData() {
         // Check if we have cached data that's still fresh
@@ -1138,7 +1124,6 @@ class CardiffCityViewModel: ObservableObject {
                 self.nextFixture = nextEvent
                 self.leaguePosition = table
                 self.lastFetchTime = Date()
-                self.lastRefreshTime = Date()
                 self.isLoading = false
             } catch {
                 self.error = error.localizedDescription
@@ -1148,19 +1133,29 @@ class CardiffCityViewModel: ObservableObject {
     }
 
     private func fetchLastEvent() async throws -> String {
-        let url = URL(string: "https://www.thesportsdb.com/api/v1/json/3/eventslast.php?id=133637")!
+        let url = URL(string: "https://www.thesportsdb.com/api/v1/json/3/eventspastleague.php?id=133637")!
         let (data, _) = try await URLSession.shared.data(from: url)
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
 
-        guard let results = json?["results"] as? [[String: Any]] else {
+        guard let events = json?["events"] as? [[String: Any]] else {
             return "No recent result"
         }
 
-        // Find most recent league match
-        guard let event = results.first(where: { event in
+        // Filter for League 1 matches only
+        let leagueMatches = events.filter { event in
             let league = event["strLeague"] as? String ?? ""
             return league == "English League 1"
-        }) else {
+        }
+
+        // Sort by date descending to get most recent
+        let sortedMatches = leagueMatches.sorted { event1, event2 in
+            let date1Str = event1["dateEvent"] as? String ?? ""
+            let date2Str = event2["dateEvent"] as? String ?? ""
+            return date1Str > date2Str
+        }
+
+        // Get most recent league match
+        guard let event = sortedMatches.first else {
             return "No recent result"
         }
 
@@ -1173,9 +1168,14 @@ class CardiffCityViewModel: ObservableObject {
 
         let isHome = homeTeam.contains("Cardiff")
         let opponent = isHome ? awayTeam : homeTeam
-        let result = isHome ? "\(homeScore)-\(awayScore)" : "\(awayScore)-\(homeScore)"
+        let cardiffScore = isHome ? homeScore : awayScore
+        let opponentScore = isHome ? awayScore : homeScore
 
-        return "Previous Fixture (\(date)):\nCardiff City \(result) \(opponent)"
+        if isHome {
+            return "Previous Fixture (\(date)):\nCardiff City \(cardiffScore)-\(opponentScore) \(opponent)"
+        } else {
+            return "Previous Fixture (\(date)):\n\(opponent) \(opponentScore)-\(cardiffScore) Cardiff City"
+        }
     }
 
     private func fetchNextEvent() async throws -> String {
@@ -1224,7 +1224,11 @@ class CardiffCityViewModel: ObservableObject {
                 let isHome = homeTeam.contains("Cardiff")
                 let opponent = isHome ? awayTeam : homeTeam
 
-                return "Next Fixture (\(date)):\nCardiff City v \(opponent)"
+                if isHome {
+                    return "Next Fixture (\(date)):\nCardiff City v \(opponent)"
+                } else {
+                    return "Next Fixture (\(date)):\n\(opponent) v Cardiff City"
+                }
             }
         }
 
@@ -1304,13 +1308,23 @@ struct SettingsView: View {
     @State private var latitudeText: String = ""
     @State private var longitudeText: String = ""
     @State private var trainStationText: String = ""
-    
+    @State private var originalLatitude: Double = 0
+    @State private var originalLongitude: Double = 0
+    @State private var originalTrainStation: String = ""
+    @Environment(\.undoManager) var undoManager
+
+    var hasChanges: Bool {
+        latitudeText != String(originalLatitude) ||
+        longitudeText != String(originalLongitude) ||
+        trainStationText != originalTrainStation
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             Text("LocalDash Settings")
                 .font(.title2)
 
-            Text("Changes are saved automatically when you close this window")
+            Text("Click Save to persist changes or Discard to close without saving")
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .padding(.bottom, 10)
@@ -1318,14 +1332,14 @@ struct SettingsView: View {
             Group {
                 Text("Location")
                     .font(.headline)
-                
+
                 HStack {
                     Text("Latitude:")
                         .frame(width: 80, alignment: .leading)
                     TextField("51.38636", text: $latitudeText)
                         .textFieldStyle(.roundedBorder)
                 }
-                
+
                 HStack {
                     Text("Longitude:")
                         .frame(width: 80, alignment: .leading)
@@ -1347,32 +1361,38 @@ struct SettingsView: View {
             }
 
             Divider()
-            
+
             Group {
                 Text("Train Station")
                     .font(.headline)
-                
+
                 HStack {
                     Text("CRS Code:")
                         .frame(width: 80, alignment: .leading)
                     TextField("RIA", text: $trainStationText)
                         .textFieldStyle(.roundedBorder)
                 }
-                
+
                 Text("Enter the 3-letter station code (e.g., RIA for Rhoose)")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
-            
+
             Spacer()
-            
+
             HStack {
+                Button("Discard") {
+                    discardChanges()
+                }
+                .keyboardShortcut(.cancelAction)
+
                 Spacer()
-                Button("Close") {
+
+                Button("Save") {
                     saveSettings()
-                    closeWindow()
                 }
                 .keyboardShortcut(.defaultAction)
+                .disabled(!hasChanges)
             }
         }
         .padding()
@@ -1381,9 +1401,12 @@ struct SettingsView: View {
             latitudeText = String(settings.latitude)
             longitudeText = String(settings.longitude)
             trainStationText = settings.trainStation
+            originalLatitude = settings.latitude
+            originalLongitude = settings.longitude
+            originalTrainStation = settings.trainStation
         }
     }
-    
+
     private func saveSettings() {
         if let lat = Double(latitudeText), let lon = Double(longitudeText) {
             settings.latitude = lat
@@ -1393,6 +1416,12 @@ struct SettingsView: View {
         if !trainStationText.isEmpty {
             settings.trainStation = trainStationText.uppercased()
         }
+
+        closeWindow()
+    }
+
+    private func discardChanges() {
+        closeWindow()
     }
 
     private func closeWindow() {
